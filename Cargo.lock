@@ -59,6 +59,7 @@ dependencies = [
  "csv",
  "derive_more",
  "owo-colors",
+ "serde",
 ]
 
 [[package]]
