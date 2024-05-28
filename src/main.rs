@@ -48,6 +48,18 @@ enum Commands {
     },
 }
 
+macro_rules! warn {
+    ($($arg:tt)*) => {
+        eprintln!("{} {}", "[WARN]".yellow(), format_args!($($arg)*));
+    };
+}
+
+macro_rules! warnok {
+    ($($arg:tt)*) => {
+        eprintln!("{} {}", "[OK]".yellow().dimmed().italic(), format_args!($($arg)*).dimmed());
+    };
+}
+
 fn main() {
     let args = Cli::parse();
 
@@ -61,7 +73,7 @@ fn main() {
             let lookup_table = parse_lookup_table(&lookup);
             let inverse_lookup_table = lookup_table
                 .into_iter()
-                .map(|(_, v)| (v.formatted_title(), v))
+                .map(|(_, v)| (v.record_title(), v))
                 .collect::<BTreeMap<String, IssueData>>();
             populate_csv(&target, inverse_lookup_table).unwrap();
         }
@@ -76,6 +88,18 @@ fn populate_csv(
 ) -> Result<(), csv::Error> {
     let mut reader = csv::Reader::from_path(target).expect("Failed to read target CSV file.");
     let target = target.replace(".csv", "_populated.csv");
+
+    // if the target file already exists, prompt the user if they want to overwrite it.
+    if std::path::Path::new(&target).exists() {
+        println!("The target file \"{}\" already exists. Do you want to overwrite it? [y/N]", target);
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).expect("Failed to read input.");
+        if input.trim().to_lowercase() != "y" {
+            println!("Exiting.");
+            return Ok(());
+        }
+    }
+
     let mut writer = csv::Writer::from_path(target).expect("Failed to write to target CSV file.");
 
     for result in reader.deserialize() {
@@ -87,6 +111,8 @@ fn populate_csv(
             if let Some(issue) = issue.issue {
                 record.issue = issue.to_string();
             }
+        } else {
+            warn!("Failed to find issue data for \"{}\".", record.node_title);
         }
         writer.serialize(record)?;
     }
@@ -350,18 +376,6 @@ fn parse_lookup_table(lookup: &str) -> BTreeMap<String, IssueData> {
     lookup_table
 }
 
-macro_rules! warn {
-    ($($arg:tt)*) => {
-        eprintln!("{} {}", "[WARN]".yellow(), format_args!($($arg)*));
-    };
-}
-
-macro_rules! warnok {
-    ($($arg:tt)*) => {
-        eprintln!("{} {}", "[OK]".yellow().dimmed().italic(), format_args!($($arg)*).dimmed());
-    };
-}
-
 #[derive(Debug)]
 struct IssueData {
     tn: String,
@@ -463,6 +477,12 @@ impl IssueData {
 
     fn formatted_title(&self) -> String {
         format!("{}_{}", self.title, self.date)
+    }
+
+    fn record_title(&self) -> String {
+        // replace underscores with spaces.
+        let title = self.title.replace("_", " ");
+        format!("{}, {}", title, self.date)
     }
 }
 
