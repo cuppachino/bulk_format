@@ -15,7 +15,7 @@ enum Commands {
     /// Bulk reformat all files and produce a lookup table mapping `tn -> formatted title`.
     Format {
         /// A path to the lookup CSV file. This csv is used to rename the input files with the corresponding `tn` to the formatted title.
-        #[arg(short = 'L', long = "csv")]
+        #[arg(short = 'L', long)]
         lookup: String,
 
         /// A path to a directory containing all files to format.
@@ -35,6 +35,17 @@ enum Commands {
         #[arg(short, long)]
         output: Option<String>,
     },
+
+    /// Modify a CSV file to include volume and issue numbers for each `tn` by its formatted title.
+    Populate {
+        /// A path to the target CSV file to modify and populate with volume and issue numbers.
+        #[arg(short = 'T', long)]
+        target: String,
+
+        /// A path to the lookup CSV file.
+        #[arg(short = 'L', long)]
+        lookup: String,
+    },
 }
 
 fn main() {
@@ -43,23 +54,220 @@ fn main() {
     match args.command {
         Commands::Format { lookup, directory, extensions, recursive, output } => {
             let files = collect_files(&directory, &extensions, recursive);
-            println!("Found {} files.", files.len());
             let lookup_table = parse_lookup_table(&lookup);
-            println!(
-                "{} {} {}",
-                "Parsed".italic().white(),
-                lookup_table.len().bold().white(),
-                "records from lookup table.".italic().white()
-            );
             copy_and_rename_files(files, lookup_table, output);
+        }
+        Commands::Populate { target, lookup } => {
+            let lookup_table = parse_lookup_table(&lookup);
+            let inverse_lookup_table = lookup_table
+                .into_iter()
+                .map(|(_, v)| (v.formatted_title(), v))
+                .collect::<BTreeMap<String, IssueData>>();
+            populate_csv(&target, inverse_lookup_table).unwrap();
         }
     }
 
     println!("{}", "Job done.".green().bold())
 }
 
+fn populate_csv(
+    target: &str,
+    inverse_lookup_table: BTreeMap<String, IssueData>
+) -> Result<(), csv::Error> {
+    let mut reader = csv::Reader::from_path(target).expect("Failed to read target CSV file.");
+    let target = target.replace(".csv", "_populated.csv");
+    let mut writer = csv::Writer::from_path(target).expect("Failed to write to target CSV file.");
+
+    for result in reader.deserialize() {
+        let mut record: Record = result?;
+        if let Some(issue) = inverse_lookup_table.get(&record.node_title) {
+            if let Some(volume) = issue.volume {
+                record.volume = volume.to_string();
+            }
+            if let Some(issue) = issue.issue {
+                record.issue = issue.to_string();
+            }
+        }
+        writer.serialize(record)?;
+    }
+
+    Ok(())
+}
+
+use serde::{ Serialize, Deserialize };
+#[derive(Debug, Serialize, Deserialize)]
+struct Record {
+    #[serde(rename = "NODE_TITLE")]
+    node_title: String,
+
+    #[serde(rename = "ASSETS")]
+    assets: String,
+
+    #[serde(rename = "ATTACHMENTS")]
+    attachments: String,
+
+    #[serde(rename = "#REDACT")]
+    redact: String,
+
+    #[serde(rename = "Part Of")]
+    part_of: String,
+
+    #[serde(rename = "Previous Issue")]
+    previous_issue: String,
+
+    #[serde(rename = "Next Issue")]
+    next_issue: String,
+
+    #[serde(rename = "Creator")]
+    creator: String,
+
+    #[serde(rename = "Contributor")]
+    contributor: String,
+
+    #[serde(rename = "Publisher")]
+    publisher: String,
+
+    #[serde(rename = "Volume")]
+    volume: String,
+
+    #[serde(rename = "Issue")]
+    issue: String,
+
+    #[serde(rename = "Description")]
+    description: String,
+
+    #[serde(rename = "Subject")]
+    subject: String,
+
+    #[serde(rename = "Date Original")]
+    date_original: String,
+
+    #[serde(rename = "Date Range")]
+    date_range: String,
+
+    #[serde(rename = "Type")]
+    type_: String,
+
+    #[serde(rename = "Original Format")]
+    original_format: String,
+
+    #[serde(rename = "Language")]
+    language: String,
+
+    #[serde(rename = "Contributing Institution")]
+    contributing_institution: String,
+
+    #[serde(rename = "Collection")]
+    collection: String,
+
+    #[serde(rename = "Subcollection")]
+    subcollection: String,
+
+    #[serde(rename = "Rights Statement")]
+    rights_statement: String,
+
+    #[serde(rename = "State Agency")]
+    state_agency: String,
+
+    #[serde(rename = "State Sub-Agency")]
+    state_sub_agency: String,
+
+    #[serde(rename = "Federal Legislative Branch Agency")]
+    federal_legislative_branch_agency: String,
+
+    #[serde(rename = "Federal Executive Department")]
+    federal_executive_department: String,
+
+    #[serde(rename = "Federal Executive Department Sub-Agency or Bureau")]
+    federal_executive_department_sub_agency_or_bureau: String,
+
+    #[serde(rename = "Federal Independent Agency")]
+    federal_independent_agency: String,
+
+    #[serde(rename = "Federal Board, Commission, or Committee")]
+    federal_board_commission_or_committee: String,
+
+    #[serde(rename = "Federal Quasi-Official Agency")]
+    federal_quasi_official_agency: String,
+
+    #[serde(rename = "Federal Court or Judicial Agency")]
+    federal_court_or_judicial_agency: String,
+
+    #[serde(rename = "City or Town")]
+    city_or_town: String,
+
+    #[serde(rename = "Geographic Feature")]
+    geographic_feature: String,
+
+    #[serde(rename = "Tribal Homeland")]
+    tribal_homeland: String,
+
+    #[serde(rename = "Road")]
+    road: String,
+
+    #[serde(rename = "County")]
+    county: String,
+
+    #[serde(rename = "State")]
+    state: String,
+
+    #[serde(rename = "Country")]
+    country: String,
+
+    #[serde(rename = "Agency")]
+    agency: String,
+
+    #[serde(rename = "Event")]
+    event: String,
+
+    #[serde(rename = "Oral History")]
+    oral_history: String,
+
+    #[serde(rename = "Person")]
+    person: String,
+
+    #[serde(rename = "Place")]
+    place: String,
+
+    #[serde(rename = "Topic")]
+    topic: String,
+
+    #[serde(rename = "Acquisition Note")]
+    acquisition_note: String,
+
+    #[serde(rename = "Call Number")]
+    call_number: String,
+
+    #[serde(rename = "Vertical File")]
+    vertical_file: String,
+
+    #[serde(rename = "OCLC Number")]
+    oclc_number: String,
+
+    #[serde(rename = "Date Digitized")]
+    date_digitized: String,
+
+    #[serde(rename = "Digital Format")]
+    digital_format: String,
+
+    #[serde(rename = "File Size")]
+    file_size: String,
+
+    #[serde(rename = "Digitizing Institution")]
+    digitizing_institution: String,
+
+    #[serde(rename = "Date Ingested")]
+    date_ingested: String,
+
+    #[serde(rename = "Batch Number")]
+    batch_number: String,
+
+    #[serde(rename = "Admin Notes")]
+    admin_notes: String,
+}
+
 fn copy_and_rename_files(
-    mut files: Vec<PathBuf>,
+    files: Vec<PathBuf>,
     lookup_table: BTreeMap<String, IssueData>,
     output: Option<String>
 ) {
@@ -111,6 +319,8 @@ fn collect_files(directory: &str, extensions: &[String], recursive: bool) -> Vec
             );
         }
     }
+    println!("Found {} files.", files.len());
+
     files
 }
 
@@ -129,6 +339,13 @@ fn parse_lookup_table(lookup: &str) -> BTreeMap<String, IssueData> {
         let issue_data = IssueData::new(tn.to_string(), title.to_string());
         lookup_table.insert(tn.to_string(), issue_data);
     }
+
+    println!(
+        "{} {} {}",
+        "Parsed".italic().white(),
+        lookup_table.len().bold().white(),
+        "records from lookup table.".italic().white()
+    );
 
     lookup_table
 }
