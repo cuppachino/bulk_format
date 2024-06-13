@@ -1,7 +1,10 @@
 use std::{ collections::BTreeMap, path::PathBuf };
 use owo_colors::OwoColorize;
-
 use clap::{ Parser, Subcommand };
+
+mod archive_record;
+mod issue_data;
+use issue_data::IssueData;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -46,19 +49,32 @@ enum Commands {
         #[arg(short = 'L', long)]
         lookup: String,
     },
+
+    /// Compare a lookup table with a generated lookup table and identify missing entries.
+    Compare {
+        /// A path to the lookup CSV file.
+        #[arg(short = 'L', long)]
+        lookup: String,
+
+        /// A path to the generated lookup CSV file.
+        #[arg(short, long)]
+        generated: String,
+    },
 }
 
-macro_rules! warn {
+macro_rules! print_warn {
     ($($arg:tt)*) => {
-        eprintln!("{} {}", "[WARN]".yellow(), format_args!($($arg)*));
+            eprintln!("{} {}", "[WARN]".yellow(), format_args!($($arg)*));
     };
 }
+pub(crate) use print_warn;
 
-macro_rules! warnok {
+macro_rules! print_warn_ok {
     ($($arg:tt)*) => {
-        eprintln!("{} {}", "[OK]".yellow().dimmed().italic(), format_args!($($arg)*).dimmed());
+            eprintln!("{} {}", "[OK]".yellow().dimmed().italic(), format_args!($($arg)*).dimmed());
     };
 }
+pub(crate) use print_warn_ok;
 
 fn main() {
     let args = Cli::parse();
@@ -77,6 +93,11 @@ fn main() {
                 .collect::<BTreeMap<String, IssueData>>();
             populate_csv(&target, inverse_lookup_table).unwrap();
         }
+        Commands::Compare { lookup, generated } => {
+            let lookup_table = parse_lookup_table(&lookup);
+            let generated_names = parse_generated_names(&generated);
+            compare_tables(lookup_table, generated_names);
+        }
     }
 
     println!("{}", "Job done.".green().bold())
@@ -86,6 +107,8 @@ fn populate_csv(
     target: &str,
     inverse_lookup_table: BTreeMap<String, IssueData>
 ) -> Result<(), csv::Error> {
+    use archive_record::ArchiveRecord;
+
     let mut reader = csv::Reader::from_path(target).expect("Failed to read target CSV file.");
     let target = target.replace(".csv", "_populated.csv");
 
@@ -103,8 +126,9 @@ fn populate_csv(
     let mut writer = csv::Writer::from_path(target).expect("Failed to write to target CSV file.");
 
     for result in reader.deserialize() {
-        let mut record: Record = result?;
+        let mut record: ArchiveRecord = result?;
         if let Some(issue) = inverse_lookup_table.get(&record.node_title) {
+            record.date_digitized = issue.date_loaded.to_string();
             if let Some(volume) = issue.volume {
                 record.volume = volume.to_string();
             }
@@ -112,184 +136,12 @@ fn populate_csv(
                 record.issue = issue.to_string();
             }
         } else {
-            warn!("Failed to find issue data for \"{}\".", record.node_title);
+            print_warn!("Failed to find issue data for \"{}\".", record.node_title);
         }
         writer.serialize(record)?;
     }
 
     Ok(())
-}
-
-use serde::{ Serialize, Deserialize };
-#[derive(Debug, Serialize, Deserialize)]
-struct Record {
-    #[serde(rename = "NODE_TITLE")]
-    node_title: String,
-
-    #[serde(rename = "ASSETS")]
-    assets: String,
-
-    #[serde(rename = "ATTACHMENTS")]
-    attachments: String,
-
-    #[serde(rename = "#REDACT")]
-    redact: String,
-
-    #[serde(rename = "Part Of")]
-    part_of: String,
-
-    #[serde(rename = "Previous Issue")]
-    previous_issue: String,
-
-    #[serde(rename = "Next Issue")]
-    next_issue: String,
-
-    #[serde(rename = "Creator")]
-    creator: String,
-
-    #[serde(rename = "Contributor")]
-    contributor: String,
-
-    #[serde(rename = "Publisher")]
-    publisher: String,
-
-    #[serde(rename = "Volume")]
-    volume: String,
-
-    #[serde(rename = "Issue")]
-    issue: String,
-
-    #[serde(rename = "Description")]
-    description: String,
-
-    #[serde(rename = "Subject")]
-    subject: String,
-
-    #[serde(rename = "Date Original")]
-    date_original: String,
-
-    #[serde(rename = "Date Range")]
-    date_range: String,
-
-    #[serde(rename = "Type")]
-    type_: String,
-
-    #[serde(rename = "Original Format")]
-    original_format: String,
-
-    #[serde(rename = "Language")]
-    language: String,
-
-    #[serde(rename = "Contributing Institution")]
-    contributing_institution: String,
-
-    #[serde(rename = "Collection")]
-    collection: String,
-
-    #[serde(rename = "Subcollection")]
-    subcollection: String,
-
-    #[serde(rename = "Rights Statement")]
-    rights_statement: String,
-
-    #[serde(rename = "State Agency")]
-    state_agency: String,
-
-    #[serde(rename = "State Sub-Agency")]
-    state_sub_agency: String,
-
-    #[serde(rename = "Federal Legislative Branch Agency")]
-    federal_legislative_branch_agency: String,
-
-    #[serde(rename = "Federal Executive Department")]
-    federal_executive_department: String,
-
-    #[serde(rename = "Federal Executive Department Sub-Agency or Bureau")]
-    federal_executive_department_sub_agency_or_bureau: String,
-
-    #[serde(rename = "Federal Independent Agency")]
-    federal_independent_agency: String,
-
-    #[serde(rename = "Federal Board, Commission, or Committee")]
-    federal_board_commission_or_committee: String,
-
-    #[serde(rename = "Federal Quasi-Official Agency")]
-    federal_quasi_official_agency: String,
-
-    #[serde(rename = "Federal Court or Judicial Agency")]
-    federal_court_or_judicial_agency: String,
-
-    #[serde(rename = "City or Town")]
-    city_or_town: String,
-
-    #[serde(rename = "Geographic Feature")]
-    geographic_feature: String,
-
-    #[serde(rename = "Tribal Homeland")]
-    tribal_homeland: String,
-
-    #[serde(rename = "Road")]
-    road: String,
-
-    #[serde(rename = "County")]
-    county: String,
-
-    #[serde(rename = "State")]
-    state: String,
-
-    #[serde(rename = "Country")]
-    country: String,
-
-    #[serde(rename = "Agency")]
-    agency: String,
-
-    #[serde(rename = "Event")]
-    event: String,
-
-    #[serde(rename = "Oral History")]
-    oral_history: String,
-
-    #[serde(rename = "Person")]
-    person: String,
-
-    #[serde(rename = "Place")]
-    place: String,
-
-    #[serde(rename = "Topic")]
-    topic: String,
-
-    #[serde(rename = "Acquisition Note")]
-    acquisition_note: String,
-
-    #[serde(rename = "Call Number")]
-    call_number: String,
-
-    #[serde(rename = "Vertical File")]
-    vertical_file: String,
-
-    #[serde(rename = "OCLC Number")]
-    oclc_number: String,
-
-    #[serde(rename = "Date Digitized")]
-    date_digitized: String,
-
-    #[serde(rename = "Digital Format")]
-    digital_format: String,
-
-    #[serde(rename = "File Size")]
-    file_size: String,
-
-    #[serde(rename = "Digitizing Institution")]
-    digitizing_institution: String,
-
-    #[serde(rename = "Date Ingested")]
-    date_ingested: String,
-
-    #[serde(rename = "Batch Number")]
-    batch_number: String,
-
-    #[serde(rename = "Admin Notes")]
-    admin_notes: String,
 }
 
 fn copy_and_rename_files(
@@ -362,7 +214,8 @@ fn parse_lookup_table(lookup: &str) -> BTreeMap<String, IssueData> {
         let record = result.expect("Failed to parse record.");
         let tn = record.get(0).expect("Failed to get tn.");
         let title = record.get(1).expect("Failed to get title.");
-        let issue_data = IssueData::new(tn.to_string(), title.to_string());
+        let date_loaded = record.get(5).expect("Failed to get date loaded.");
+        let issue_data = IssueData::new(tn.to_string(), title.to_string(), date_loaded.to_string());
         lookup_table.insert(tn.to_string(), issue_data);
     }
 
@@ -376,181 +229,102 @@ fn parse_lookup_table(lookup: &str) -> BTreeMap<String, IssueData> {
     lookup_table
 }
 
-#[derive(Debug)]
-struct IssueData {
-    tn: String,
-    title: String,
-    volume: Option<u32>,
-    issue: Option<u32>,
-    date: String,
+fn parse_generated_names(generated: &str) -> Vec<String> {
+    let mut names = vec![];
+
+    // assert the lookup is a csv file.
+    assert!(generated.ends_with(".csv"), "Generated table must be a CSV file.");
+
+    let mut reader = csv::Reader::from_path(generated).expect("Failed to read generated table.");
+    for result in reader.records() {
+        let record = result.expect("Failed to parse record.");
+        // Arizona Catering Employees, 1944-05-12
+        let node_title = record.get(0).expect("Failed to get node title.");
+        // // split on comma, extract the date.
+        // let date = node_title.split(", ").last().expect("Failed to split date from node title.");
+        names.push(node_title.to_string());
+    }
+
+    println!(
+        "{} {} {}",
+        "Parsed".italic().white(),
+        names.len().bold().white(),
+        "records from generated table.".italic().white()
+    );
+
+    names
 }
 
-impl IssueData {
-    fn new(tn: String, raw_title: String) -> Self {
-        // Example: Arizona Catering Employees. (Aug. 6, 1944)
-        // Example: Arizona Catering Employees. v. 1 no 11 Sep. 21, 1944)
-        // Example: Arizona Catering Employees. v. 9, no. 9 (Jul. 11, 1952)
-
-        // First, split off the date.
-        let mut parts = raw_title.split(" (");
-        let date = parts
-            .clone()
-            .last()
-            .expect("Failed to split date from raw title")
-            .trim_end_matches(')');
-        let date = convert_date(date);
-
-        // Next, split off the volume and issue, if they exist.
-        let parts = parts.next().expect("Failed to split title from raw title");
-        let (title, v_n) = parts.split_once(".").expect("Failed to split title from volume/issue.");
-
-        // Replace spaces in the title with underscores.
-        let title = title.replace(" ", "_");
-
-        // If the volume and issue are not empty, split them.
-        let (volume, issue) = if v_n.is_empty() {
-            (None, None)
+fn compare_tables(lookup_table: BTreeMap<String, IssueData>, generated_names: Vec<String>) {
+    // check if any of the dates in the lookup table are the same.
+    {
+        let mut duplicate_dates = vec![];
+        for (tn, issue) in &lookup_table {
+            if
+                lookup_table
+                    .values()
+                    .filter(|i| i.date == issue.date)
+                    .count() > 1
+            {
+                duplicate_dates.push((tn, issue.date.clone()));
+            }
+        }
+        if duplicate_dates.is_empty() {
+            println!("{}", "No duplicate dates found.".green().bold());
         } else {
-            let (volume, issue) = match v_n.split_once(", ") {
-                Some((v, n)) => (v.to_string(), n.to_string()),
-                None => {
-                    let v_n = v_n
-                        .trim()
-                        .replace("no. ", "no.")
-                        .replace("no ", "no")
-                        .replace("v. ", "v.")
-                        .replace("v ", "v");
+            println!("{}", "Duplicate dates:".red().bold());
+            for (tn, date) in duplicate_dates {
+                println!("{}: {}", tn, date);
+            }
+        }
+    }
 
-                    warn!("VOLUME AND ISSUE WERE NOT COMMA SEPARATED: \"{}\"", v_n);
-
-                    let (v, n) = v_n.split_once(" ").expect("Failed to split volume/issue.");
-                    warnok!(
-                        "Split volume/issue on the first space instead: \"{}\" and \"{}\"",
-                        v,
-                        n
-                    );
-                    (v.to_string(), n.to_string())
-                }
-            };
-
-            let volume = volume
-                .trim()
-                .trim_start_matches("v. ")
-                .trim_start_matches("v.")
-                .trim_start_matches("v ")
-                .trim_start_matches("v")
-                .trim_end_matches(|c: char| (c == ',' || c == '.' || c.is_whitespace()));
-
-            let issue = issue
-                .trim()
-                .trim_start_matches("no. ")
-                .trim_start_matches("no.")
-                .trim_start_matches("no ")
-                .trim_start_matches("no")
-                .trim_end_matches(|c: char| (c == ',' || c == '.' || c.is_whitespace()));
-
-            let volume = volume
-                .parse::<u32>()
-                .expect(format!("Failed to parse volume: {}", volume).as_str());
-
-            let issue = (
-                match issue.parse::<u32>() {
-                    Ok(i) => Some(i),
-                    Err(_) => {
-                        // The date is probably missing its opening parenthesis and is being parsed as the issue. Try splitting on the first space, and taking the first part.
-                        issue.split_once(" ").expect("Failed to split issue.").0.parse::<u32>().ok()
-                    }
-                }
-            ).expect("Failed to parse issue.");
-
-            (Some(volume), Some(issue))
-        };
-
-        Self {
-            tn,
-            title,
-            volume,
-            issue,
-            date,
+    let mut missing = vec![];
+    let mut indexes = vec![];
+    // for each name in the lookup table, check if it exists in the generated names, and if it does not, add it to the missing list.
+    for (tn, issue) in lookup_table {
+        if !generated_names.contains(&issue.record_title()) {
+            missing.push((tn, issue.record_title()));
+        } else {
+            // get the index of the generated name.
+            let index = generated_names
+                .iter()
+                .position(|n| n.contains(&issue.record_title()))
+                .unwrap();
+            indexes.push(index);
         }
     }
 
-    fn formatted_title(&self) -> String {
-        format!("{}_{}", self.title, self.date)
-    }
-
-    fn record_title(&self) -> String {
-        // replace underscores with spaces.
-        let title = self.title.replace("_", " ");
-        format!("{}, {}", title, self.date)
-    }
-}
-
-const MONTHS: [&str; 12] = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-];
-
-/// Converts a date string to a partial yyyy-mm-dd format.
-///
-/// Example: Aug. 6, 1944 -> 1944-08-06
-fn convert_date(date: &str) -> String {
-    let mut parts = date.split(" ").collect::<Vec<&str>>();
-
-    if parts.len() != 3 {
-        warn!("Parts is not 3 in length. Date: \"{}\"", date);
-        let mut month_i = None;
-        for (i, part) in parts.iter().enumerate() {
-            if month_i.is_some() {
-                break;
-            }
-            for month in MONTHS.iter() {
-                if part.starts_with(month) {
-                    warnok!("Found month: \"{}\" at part {}", month, i);
-                    month_i = Some(i);
-                    break;
-                }
-            }
+    // sort the indexes, verify they are sequential.
+    indexes.sort();
+    let mut last = -1;
+    let mut is_sequential = true;
+    for index in indexes.iter() {
+        let index = index.clone() as i32;
+        if index != last + 1 {
+            print_warn!("Index {} is not sequential.", index);
+            is_sequential = false;
         }
-        let month_i = month_i.expect(
-            format!("Failed to find month in date. Check the date formatting for: \"{}\"", date).as_str()
+        last = index;
+    }
+    if is_sequential {
+        println!(
+            "{} {}..{}",
+            "Indexes are sequential.".green().bold(),
+            indexes[0],
+            indexes.last().unwrap()
         );
-        // replace parts with month_i..end.
-        parts = parts[month_i..].to_vec();
+    } else {
+        println!("{}", "Indexes are not sequential.".red().bold());
     }
+    println!("{} Total verified files.", indexes.len());
 
-    assert_eq!(parts.len(), 3);
-
-    let month = parts[0].trim_end_matches('.');
-    let day = parts[1].trim_end_matches(',');
-    let year = parts[2];
-
-    let month = match month {
-        "Jan" => "01",
-        "Feb" => "02",
-        "Mar" => "03",
-        "Apr" => "04",
-        "May" => "05",
-        "Jun" => "06",
-        "Jul" => "07",
-        "Aug" => "08",
-        "Sep" => "09",
-        "Oct" => "10",
-        "Nov" => "11",
-        "Dec" => "12",
-        _ => panic!("Invalid month."),
-    };
-    let day = if day.len() == 1 { format!("0{}", day) } else { day.to_string() };
-
-    format!("{}-{}-{}", year, month, day)
+    if missing.is_empty() {
+        println!("{}", "No missing entries found.".green().bold());
+    } else {
+        println!("{}", "Missing entries:".red().bold());
+        for (tn, title) in missing {
+            println!("{}: {}", tn, title);
+        }
+    }
 }
