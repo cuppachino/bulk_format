@@ -1,4 +1,5 @@
 use std::{ collections::BTreeMap, path::PathBuf };
+use bulk_format::{ prompt_bool, safely_target_file };
 use owo_colors::OwoColorize;
 use clap::{ Parser, Subcommand };
 
@@ -42,12 +43,19 @@ enum Commands {
     /// Modify a CSV file to include volume and issue numbers for each `tn` by its formatted title.
     Populate {
         /// A path to the target CSV file to modify and populate with volume and issue numbers.
-        #[arg(short = 'T', long)]
+        #[arg(short, long)]
         target: String,
 
         /// A path to the lookup CSV file.
         #[arg(short = 'L', long)]
         lookup: String,
+    },
+
+    /// Populate a CSV file with `previous` and `next` issue data, using the order of the records and their node titles.
+    LinkIssues {
+        /// A path to the target CSV file to modify and populate with `previous` and `next` issue data.
+        #[arg(short, long)]
+        target: String,
     },
 
     /// Compare a lookup table with a generated lookup table and identify missing entries.
@@ -93,6 +101,9 @@ fn main() {
                 .collect::<BTreeMap<String, IssueData>>();
             populate_csv(&target, inverse_lookup_table).unwrap();
         }
+        Commands::LinkIssues { target } => {
+            link_issues(&target);
+        }
         Commands::Compare { lookup, generated } => {
             let lookup_table = parse_lookup_table(&lookup);
             let generated_names = parse_generated_names(&generated);
@@ -114,11 +125,11 @@ fn populate_csv(
 
     // if the target file already exists, prompt the user if they want to overwrite it.
     if std::path::Path::new(&target).exists() {
-        println!("The target file \"{}\" already exists. Do you want to overwrite it? [y/N]", target);
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input).expect("Failed to read input.");
-        if input.trim().to_lowercase() != "y" {
-            println!("Exiting.");
+        let should_overwrite = prompt_bool(
+            &format!("The target file \"{}\" already exists. Do you want to overwrite it?", target)
+        );
+        if !should_overwrite {
+            print_warn_ok!("Exiting without overwriting target file.");
             return Ok(());
         }
     }
@@ -142,6 +153,36 @@ fn populate_csv(
     }
 
     Ok(())
+}
+
+/// Populate a CSV file with `previous` and `next` issue data, using the order of the records and their node titles.
+fn link_issues(target: &str) {
+    use archive_record::ArchiveRecord;
+
+    let mut reader = csv::Reader::from_path(target).expect("Failed to read target CSV file.");
+    let target = safely_target_file(&target.replace(".csv", "_linked.csv"));
+
+    let mut writer = csv::Writer
+        ::from_path(target.clone())
+        .expect("Failed to write to target CSV file.");
+
+    let mut records: Vec<ArchiveRecord> = reader
+        .deserialize()
+        .map(|r| r.expect("Failed to parse record."))
+        .collect();
+    let og_records = records.clone();
+
+    for (i, record) in records.iter_mut().enumerate() {
+        if i > 0 {
+            record.previous_issue = og_records[i - 1].node_title.clone();
+        }
+        if i < og_records.len() - 1 {
+            record.next_issue = og_records[i + 1].node_title.clone();
+        }
+        writer.serialize(record).expect("Failed to write record.");
+    }
+
+    println!("Linked issues and saved to \"{}\".", target);
 }
 
 fn copy_and_rename_files(

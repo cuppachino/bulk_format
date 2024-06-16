@@ -1,5 +1,5 @@
 use serde::{ Serialize, Deserialize };
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchiveRecord {
     #[serde(rename = "NODE_TITLE")]
     pub node_title: String,
