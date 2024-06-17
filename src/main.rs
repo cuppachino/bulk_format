@@ -5,7 +5,10 @@ use clap::{ Parser, Subcommand };
 
 mod archive_record;
 mod issue_data;
+mod date;
+
 use issue_data::IssueData;
+use date::Date;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -68,6 +71,25 @@ enum Commands {
         #[arg(short, long)]
         generated: String,
     },
+
+    /// Group files into directories where each directory contains at most `n` files.
+    GroupFiles {
+        /// A path to the directory containing all files to group.
+        #[arg(short, long = "dir")]
+        directory: String,
+
+        /// The file extensions to include in the search.
+        #[arg(short, long = "ext", default_value = "pdf")]
+        extensions: Vec<String>,
+
+        /// If true, the directory will be searched recursively.
+        #[arg(short, long)]
+        recursive: bool,
+
+        /// The number of files to include in each group. If the number of files in the directory is not divisible by `n`, the last group will contain the remainder.
+        #[arg(short)]
+        n: usize,
+    },
 }
 
 macro_rules! print_warn {
@@ -108,6 +130,9 @@ fn main() {
             let lookup_table = parse_lookup_table(&lookup);
             let generated_names = parse_generated_names(&generated);
             compare_tables(lookup_table, generated_names);
+        }
+        Commands::GroupFiles { directory, extensions, recursive, n } => {
+            group_files(&directory, &extensions, recursive, n);
         }
     }
 
@@ -183,6 +208,66 @@ fn link_issues(target: &str) {
     }
 
     println!("Linked issues and saved to \"{}\".", target);
+}
+
+fn group_files(directory: &str, extensions: &[String], recursive: bool, n: usize) {
+    let files = collect_files(directory, extensions, recursive);
+    let groups = files.chunks(n);
+
+    for (i, group) in groups.enumerate() {
+        // if the files have dates at the end, find the min and max dates.
+        let mut dates: Vec<Date> = vec![];
+        for file in group {
+            // split on the last underscore, everything after is the date.
+            if
+                let Some(date) = file
+                    .file_name()
+                    .expect("Failed to get file name.")
+                    .to_string_lossy()
+                    .split("_")
+                    .last()
+            {
+                let date = date.split(".").next().expect("Failed to split date.");
+                let date = Date::try_from(date).expect("Failed to parse date.");
+                dates.push(date);
+            }
+        }
+
+        #[allow(unused_parens)]
+        let group_dir = if
+            let Some((min_date, max_date)) = ({
+                dates
+                    .iter()
+                    .min()
+                    .map(|min_date| {
+                        dates
+                            .iter()
+                            .max()
+                            .map(|max_date| (min_date, max_date))
+                    })
+                    .flatten()
+            })
+        {
+            let min_date = min_date.year;
+            let max_date = max_date.year;
+            format!("{}/{i}_{min_date}-{max_date}", directory)
+        } else {
+            format!("{}/{i}", directory)
+        };
+        std::fs::create_dir_all(&group_dir).expect("Failed to create group directory.");
+
+        for file in group {
+            let target = PathBuf::from(group_dir.as_str()).join(
+                file.file_name().expect("Failed to get file name.")
+            );
+            println!(
+                "Moving file \"{}\" to \"{}\"",
+                file.to_string_lossy(),
+                target.to_string_lossy()
+            );
+            std::fs::rename(file, target).expect("Failed to move file.");
+        }
+    }
 }
 
 fn copy_and_rename_files(
