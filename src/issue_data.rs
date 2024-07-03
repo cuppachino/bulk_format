@@ -159,13 +159,36 @@ fn convert_date(date: &str) -> String {
         parts = parts[month_i..].to_vec();
     }
 
-    assert_eq!(parts.len(), 3);
+    // assert_eq!(parts.len(), 3);
 
-    let month = parts[0].trim_end_matches('.');
-    let day = parts[1].trim_end_matches(',');
-    let year = parts[2];
+    match parts.len() {
+        3 => {
+            let month = parts[0].trim_end_matches('.');
+            let day = parts[1].trim_end_matches(',');
+            let year = parts[2];
 
-    let month = match month {
+            let month = try_parse_month(month);
+            let day = if day.len() == 1 { format!("0{}", day) } else { day.to_string() };
+
+            format!("{}-{}-{}", year, month, day)
+        }
+        2 => {
+            let month = parts[0].trim_end_matches('.');
+            let year = parts[1];
+
+            let month = try_parse_month(month);
+            format!("{}-{}", year, month)
+        }
+        1 => {
+            let year = parts[0];
+            format!("{}", year)
+        }
+        _ => panic!("Invalid date."),
+    }
+}
+
+fn try_parse_month(maybe_month: &str) -> &str {
+    match maybe_month {
         "Jan" => "01",
         "Feb" => "02",
         "Mar" => "03",
@@ -179,8 +202,5 @@ fn convert_date(date: &str) -> String {
         "Nov" => "11",
         "Dec" => "12",
         _ => panic!("Invalid month."),
-    };
-    let day = if day.len() == 1 { format!("0{}", day) } else { day.to_string() };
-
-    format!("{}-{}-{}", year, month, day)
+    }
 }
