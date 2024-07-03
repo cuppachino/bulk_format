@@ -29,7 +29,11 @@ impl IssueData {
 
         // Next, split off the volume and issue, if they exist.
         let parts = parts.next().expect("Failed to split title from raw title");
-        let (title, v_n) = parts.split_once(".").expect("Failed to split title from volume/issue.");
+        let (title, v_n) = parts
+            .split_once(".")
+            .expect(
+                format!("Failed to split title from volume/issue for title: \"{}\"", parts).as_str()
+            );
 
         // Replace spaces in the title with underscores.
         let title = title.replace(" ", "_");
