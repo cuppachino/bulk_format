@@ -325,6 +325,8 @@ fn collect_files(directory: &str, extensions: &[String], recursive: bool) -> Vec
     }
     println!("Found {} files.", files.len());
 
+    files.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+
     files
 }
 
