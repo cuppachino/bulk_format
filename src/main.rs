@@ -343,6 +343,11 @@ fn parse_lookup_table(lookup: &str) -> BTreeMap<String, IssueData> {
         let tn = record.get(0).expect("Failed to get tn.");
         let title = record.get(1).expect("Failed to get title.");
         let date_loaded = record.get(5).expect("Failed to get date loaded.");
+
+        if tn.is_empty() {
+            continue;
+        }
+
         let issue_data = IssueData::new(tn.to_string(), title.to_string(), date_loaded.to_string());
         lookup_table.insert(tn.to_string(), issue_data);
     }
