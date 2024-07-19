@@ -206,6 +206,6 @@ fn try_parse_month(maybe_month: &str) -> &str {
         "Oct" => "10",
         "Nov" => "11",
         "Dec" => "12",
-        _ => panic!("Invalid month."),
+        _ => panic!("Invalid month. {}", maybe_month),
     }
 }
