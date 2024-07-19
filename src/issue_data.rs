@@ -25,7 +25,7 @@ impl IssueData {
             .last()
             .expect("Failed to split date from raw title")
             .trim_end_matches(')');
-        let date = convert_date(date);
+        let date = convert_date(date, &tn);
 
         // Next, split off the volume and issue, if they exist.
         let parts = parts.next().expect("Failed to split title from raw title");
@@ -138,7 +138,7 @@ const MONTHS: [&str; 12] = [
 /// Converts a date string to a partial yyyy-mm-dd format.
 ///
 /// Example: Aug. 6, 1944 -> 1944-08-06
-fn convert_date(date: &str) -> String {
+fn convert_date(date: &str, tn: &str) -> String {
     let mut parts = date.split(" ").collect::<Vec<&str>>();
 
     if parts.len() != 3 {
@@ -157,7 +157,11 @@ fn convert_date(date: &str) -> String {
             }
         }
         let month_i = month_i.expect(
-            format!("Failed to find month in date. Check the date formatting for: \"{}\"", date).as_str()
+            format!(
+                "Failed to find month in date. Check the date formatting for: \"{}\", tn: {}",
+                date,
+                tn
+            ).as_str()
         );
         // replace parts with month_i..end.
         parts = parts[month_i..].to_vec();
