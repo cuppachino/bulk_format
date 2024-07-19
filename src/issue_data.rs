@@ -163,8 +163,6 @@ fn convert_date(date: &str) -> String {
         parts = parts[month_i..].to_vec();
     }
 
-    // assert_eq!(parts.len(), 3);
-
     match parts.len() {
         3 => {
             let month = parts[0].trim_end_matches('.');
@@ -192,6 +190,9 @@ fn convert_date(date: &str) -> String {
 }
 
 fn try_parse_month(maybe_month: &str) -> &str {
+    // remove any leading/trailing periods or whitespace.
+    let maybe_month = maybe_month.trim_matches(|c: char| (c == '.' || c.is_whitespace()));
+
     match maybe_month {
         "Jan" => "01",
         "Feb" => "02",
